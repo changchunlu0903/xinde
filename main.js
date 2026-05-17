@@ -80,6 +80,8 @@ let state = {
   speeches: [],
   me: null,
   channel: null,
+  pollTimer: null,
+  loadingNow: false,
   wordVisible: false,
   recognition: null,
   recognizing: false,
@@ -462,10 +464,13 @@ async function enterRoom(roomId, playerId) {
   subscribe(roomId, playerId);
 }
 
-async function loadAll(roomId = state.room?.id, playerId = state.me?.id) {
+async function loadAll(roomId = state.room?.id, playerId = state.me?.id, options = {}) {
   if (!sb || !roomId) return;
+  if (state.loadingNow) return;
+  state.loadingNow = true;
 
-  const [roomRes, playersRes, speechesRes] = await Promise.all([
+  try {
+    const [roomRes, playersRes, speechesRes] = await Promise.all([
     sb.from("rooms").select("*").eq("id", roomId).maybeSingle(),
     sb.from("players").select("*").eq("room_id", roomId).order("joined_at", { ascending: true }),
     sb.from("speeches").select("*").eq("room_id", roomId).order("created_at", { ascending: true }),
@@ -517,7 +522,10 @@ async function loadAll(roomId = state.room?.id, playerId = state.me?.id) {
   state.speeches = speechesRes.data || [];
   state.me = me;
 
-  render();
+    render();
+  } finally {
+    state.loadingNow = false;
+  }
 }
 
 function subscribe(roomId, playerId) {
@@ -530,11 +538,34 @@ function subscribe(roomId, playerId) {
     .on("postgres_changes", { event: "*", schema: "public", table: "votes", filter: `room_id=eq.${roomId}` }, () => loadAll(roomId, playerId))
     .on("postgres_changes", { event: "*", schema: "public", table: "speeches", filter: `room_id=eq.${roomId}` }, () => loadAll(roomId, playerId))
     .subscribe();
+
+  // Realtime + 轮询兜底。手机浏览器切后台、网络波动、Pages 缓存时也能自动同步。
+  startAutoSync(roomId, playerId);
 }
 
 function unsubscribe() {
   if (state.channel && sb) sb.removeChannel(state.channel);
   state.channel = null;
+  stopAutoSync();
+}
+
+function stopAutoSync() {
+  if (state.pollTimer) {
+    clearInterval(state.pollTimer);
+    state.pollTimer = null;
+  }
+}
+
+function startAutoSync(roomId, playerId) {
+  stopAutoSync();
+
+  // 双保险：Realtime 有时在手机浏览器 / GitHub Pages / 后台切换后会断，
+  // 所以这里加一个轻量轮询。这样别人发言、投票、进入讨论后，不刷新也会同步。
+  state.pollTimer = setInterval(() => {
+    if (!roomId || !playerId) return;
+    if (document.hidden) return;
+    loadAll(roomId, playerId, { silent: true });
+  }, 1800);
 }
 
 function aliveContestants() {
@@ -1164,6 +1195,7 @@ async function submitSpeech() {
     await nextSpeaker();
   }
 
+  await loadAll(room.id, me.id, { silent: true });
   toast("发言已提交。");
 }
 
@@ -1200,6 +1232,7 @@ async function sendDiscussion() {
   }
 
   $("discussionInput").value = "";
+  await loadAll(room.id, me.id, { silent: true });
   toast("讨论已发送，所有玩家都能看到。");
 }
 
@@ -1239,7 +1272,10 @@ async function submitVote(targetId) {
   );
 
   if (error) toast(error.message);
-  else toast("投票成功。");
+  else {
+    toast("投票成功。");
+    await loadAll(room.id, me.id, { silent: true });
+  }
 }
 
 async function resolveVote() {
@@ -1550,6 +1586,26 @@ function bindEvents() {
   $("btnSaveAiConfigRoom").addEventListener("click", () => saveAiConfigFrom("Room"));
   $("btnFindModels").addEventListener("click", () => findModels(""));
   $("btnFindModelsRoom").addEventListener("click", () => findModels("Room"));
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && state.room?.id && state.me?.id) {
+      loadAll(state.room.id, state.me.id, { silent: true });
+    }
+  });
+
+  window.addEventListener("pageshow", () => {
+    if (state.room?.id && state.me?.id) {
+      loadAll(state.room.id, state.me.id, { silent: true });
+    }
+  });
+
+  document.querySelectorAll("[data-page]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (state.room?.id && state.me?.id) {
+        setTimeout(() => loadAll(state.room.id, state.me.id, { silent: true }), 80);
+      }
+    });
+  });
 }
 
 async function boot() {

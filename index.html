@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>谁是卧底 · 联机版 V10</title>
+  <title>谁是卧底 · 联机版 V11</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
@@ -33,7 +33,7 @@
           <p class="eyebrow">房间码联机 · 自动同步 · 公开讨论 · 投票复盘</p>
           <h2>开一局清楚、有记录、能讨论的卧底局。</h2>
           <p class="sub">
-            先发言，再进入公开讨论区，所有玩家都能看到所有人的讨论消息。V10 修复手机版键盘遮挡和输入框错位，并保留自动同步。
+            先发言，再进入公开讨论区，所有玩家都能看到所有人的讨论消息。V11 增加可移动悬浮窗：玩家聊天和房主操控都能随时打开。
           </p>
         </div>
       </section>
@@ -644,6 +644,58 @@
       </section>
     </section>
   </main>
+
+
+  <!-- V11 全局悬浮窗：玩家聊天 / 房主操控 -->
+  <div id="floatDock" class="float-dock hidden">
+    <button id="floatBubble" class="float-bubble" aria-label="打开悬浮窗">
+      <span id="floatBubbleMain">聊</span>
+      <em id="floatUnread" class="hidden">0</em>
+    </button>
+
+    <section id="floatPanel" class="float-panel hidden">
+      <header id="floatPanelHeader" class="float-header">
+        <div>
+          <span id="floatRoomPhase">实时房间</span>
+          <b>房间悬浮窗</b>
+        </div>
+        <button id="btnCloseFloat" class="float-close">×</button>
+      </header>
+
+      <nav class="float-tabs">
+        <button id="floatTabChat" class="float-tab active" data-float-tab="chat">玩家聊天</button>
+        <button id="floatTabHost" class="float-tab host-only" data-float-tab="host">房主操控</button>
+      </nav>
+
+      <div id="floatChatPage" class="float-page active">
+        <div id="floatChatList" class="float-chat-list"></div>
+        <div class="float-input-row">
+          <textarea id="floatChatInput" placeholder="像微信一样随时讨论、质疑、拉票……"></textarea>
+          <button id="btnSendFloatChat">发送</button>
+        </div>
+      </div>
+
+      <div id="floatHostPage" class="float-page">
+        <div class="float-host-status">
+          <span>当前阶段</span>
+          <b id="floatHostPhase">等待玩家</b>
+          <p id="floatHostHint">房主可以在这里快速推进流程，不用来回翻页面。</p>
+        </div>
+
+        <button id="btnFloatNextStep" class="float-primary">下一步</button>
+
+        <div class="float-host-grid">
+          <button id="btnFloatStartSpeaking">开始发言</button>
+          <button id="btnFloatStartDiscussing">开始讨论</button>
+          <button id="btnFloatStartVoting">开始投票</button>
+          <button id="btnFloatResolveVote">统计投票</button>
+          <button id="btnFloatNextRound">下一轮</button>
+          <button id="btnFloatResetRoom" class="danger">重开</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
 
   <div id="toast" class="toast hidden"></div>
 

@@ -5,8 +5,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
  * SUPABASE_URL：项目主页里的 https://xxxx.supabase.co
  * SUPABASE_ANON_KEY：API Keys 里的 anon / public / publishable key
  */
-const SUPABASE_URL = "https://wohfdkdbbwukmpsdjtlx.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_Oeo8753FJArw4Lw5bglL7g_HfRT28tJ";
+const SUPABASE_URL = "https://azourucdainmhhnyqfij.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_FPowOyAa13yaAH80UAwjnA_mYyOVA9m";
 
 const isConfigured =
   SUPABASE_URL.startsWith("https://") &&

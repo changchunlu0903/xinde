@@ -1527,6 +1527,72 @@ function startVoiceInput() {
   recognition.start();
 }
 
+
+function setupMobileKeyboardFix() {
+  const root = document.documentElement;
+
+  function updateViewportVars() {
+    const vv = window.visualViewport;
+    const viewportHeight = vv ? vv.height : window.innerHeight;
+    const fullHeight = window.innerHeight;
+    const keyboardHeight = vv ? Math.max(0, fullHeight - vv.height - vv.offsetTop) : 0;
+
+    root.style.setProperty("--real-vh", `${viewportHeight}px`);
+    root.style.setProperty("--keyboard-height", `${keyboardHeight}px`);
+  }
+
+  function scrollFocusedIntoView(target) {
+    if (!target || !target.matches?.("input, textarea, select")) return;
+
+    // 等键盘动画先弹出来，再滚动；iOS Safari 太早滚动会对不准
+    setTimeout(() => {
+      try {
+        target.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+          inline: "nearest",
+        });
+      } catch {
+        target.scrollIntoView(false);
+      }
+    }, 280);
+
+    setTimeout(() => {
+      try {
+        target.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+          inline: "nearest",
+        });
+      } catch {
+        target.scrollIntoView(false);
+      }
+    }, 650);
+  }
+
+  updateViewportVars();
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", updateViewportVars);
+    window.visualViewport.addEventListener("scroll", updateViewportVars);
+  }
+
+  window.addEventListener("resize", updateViewportVars);
+  window.addEventListener("orientationchange", () => {
+    setTimeout(updateViewportVars, 300);
+  });
+
+  document.addEventListener("focusin", (event) => {
+    scrollFocusedIntoView(event.target);
+  });
+
+  document.addEventListener("click", (event) => {
+    if (event.target?.matches?.("input, textarea, select")) {
+      scrollFocusedIntoView(event.target);
+    }
+  });
+}
+
 function bindEvents() {
   $("btnCreateRoom").addEventListener("click", createRoom);
   $("btnJoinRoom").addEventListener("click", joinRoom);
@@ -1610,6 +1676,7 @@ function bindEvents() {
 
 async function boot() {
   bindEvents();
+  setupMobileKeyboardFix();
   fillPromptTextareas();
   fillAiInputs();
   switchHomePanel("create");

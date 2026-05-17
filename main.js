@@ -90,6 +90,8 @@ let state = {
   lastSeenDiscussionCount: 0,
   floatForceScrollBottom: false,
   floatBubbleAnchor: null,
+  hostSettingsDirty: false,
+  floatActiveTab: null,
 };
 
 const localKey = {
@@ -672,16 +674,21 @@ function renderHostControls() {
   const { room, players } = state;
   if (!room || !state.me?.is_host) return;
 
-  $("roomMode").value = room.mode || "manual";
-  $("roomModeratorMode").value = room.moderator_mode || "system";
-  $("roomSpeakingMode").value = room.speaking_mode || "ordered_text";
-  $("roomCategory").value = room.category || "";
-  $("roomDifficulty").value = room.difficulty || "中等";
-  $("roomUndercoverCount").value = room.undercover_count || 1;
-  $("roomBlankEnabled").checked = !!room.blank_enabled;
-  $("roomRequirement").value = room.requirement || "";
-  $("roomManualCivilianWord").value = room.civilian_word || "";
-  $("roomManualUndercoverWord").value = room.undercover_word || "";
+  // V14：自动同步会频繁 render。房主正在改房间设置时，不要把 select/input 刷回数据库旧值。
+  // 否则就会出现“我刚改出词模式，又自己跳回去了”的感觉。
+  const editingSettings = state.hostSettingsDirty && room.phase === "waiting";
+  if (!editingSettings) {
+    $("roomMode").value = room.mode || "manual";
+    $("roomModeratorMode").value = room.moderator_mode || "system";
+    $("roomSpeakingMode").value = room.speaking_mode || "ordered_text";
+    $("roomCategory").value = room.category || "";
+    $("roomDifficulty").value = room.difficulty || "中等";
+    $("roomUndercoverCount").value = room.undercover_count || 1;
+    $("roomBlankEnabled").checked = !!room.blank_enabled;
+    $("roomRequirement").value = room.requirement || "";
+    $("roomManualCivilianWord").value = room.civilian_word || "";
+    $("roomManualUndercoverWord").value = room.undercover_word || "";
+  }
 
   syncRoomQuestionMasterUI();
 
@@ -1022,6 +1029,7 @@ async function syncRoomSettingsFromHostPanel() {
 
   const { error } = await sb.from("rooms").update(payload).eq("id", state.room.id);
   if (error) throw error;
+  state.hostSettingsDirty = false;
   await loadAll();
 }
 
@@ -1749,6 +1757,7 @@ function updateFloatHostButtons() {
 }
 
 function switchFloatTab(tab) {
+  state.floatActiveTab = tab;
   document.querySelectorAll(".float-tab").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.floatTab === tab);
   });
@@ -1762,24 +1771,36 @@ function placeFloatPanelNearBubble() {
   if (!dock || !panel) return;
 
   const anchor = state.floatBubbleAnchor || dock.getBoundingClientRect();
-  const panelWidth = panel.offsetWidth || 390;
-  const panelHeight = panel.offsetHeight || Math.min(window.innerHeight * 0.72, 560);
   const gap = 10;
+
+  dock.classList.remove("float-bubble-mode");
+  dock.classList.add("float-panel-mode");
+
+  // 先让面板进入可测量状态，拿到真实宽高，再决定放在按钮上方/下方。
+  panel.classList.add("float-measuring");
+  panel.classList.remove("hidden");
+  const panelWidth = panel.offsetWidth || Math.min(window.innerWidth * 0.92, 390);
+  const panelHeight = panel.offsetHeight || Math.min(window.innerHeight * 0.72, 560);
+  panel.classList.remove("float-measuring");
 
   let left = anchor.left;
   let top;
 
-  // V13：按钮在下面时，弹窗自动出现在按钮上方，不会掉到屏幕外。
-  if (anchor.top + panelHeight > window.innerHeight - 8) {
-    top = anchor.top - panelHeight - gap;
+  // V14：按钮在屏幕下半部时，面板放按钮上方；否则放按钮下方。
+  // 这样移动悬浮按钮后，悬浮窗会跟着按钮的位置智能展开。
+  const spaceBelow = window.innerHeight - (anchor.top + 58) - 8;
+  const spaceAbove = anchor.top - 8;
+
+  if (spaceBelow >= panelHeight || spaceBelow >= spaceAbove) {
+    top = anchor.top + 58 + gap;
   } else {
-    top = anchor.top;
+    top = anchor.top - panelHeight - gap;
   }
 
-  if (top < 8) top = Math.max(8, window.innerHeight - panelHeight - 8);
-  if (left + panelWidth > window.innerWidth - 8) {
-    left = window.innerWidth - panelWidth - 8;
-  }
+  if (top < 8) top = 8;
+  if (top + panelHeight > window.innerHeight - 8) top = Math.max(8, window.innerHeight - panelHeight - 8);
+
+  if (left + panelWidth > window.innerWidth - 8) left = window.innerWidth - panelWidth - 8;
   if (left < 8) left = 8;
 
   dock.style.left = `${left}px`;
@@ -1791,6 +1812,9 @@ function placeFloatPanelNearBubble() {
 function restoreFloatBubbleAnchor() {
   const dock = $("floatDock");
   if (!dock || !state.floatBubbleAnchor) return;
+
+  dock.classList.remove("float-panel-mode");
+  dock.classList.add("float-bubble-mode");
 
   const width = 58;
   const height = 58;
@@ -1811,7 +1835,7 @@ function openFloatPanel(tab) {
     state.floatBubbleAnchor = { left: rect.left, top: rect.top };
   }
 
-  // V13：房主第一次打开默认是“房主操控”，玩家默认是“聊天”。
+  // V14：房主打开永远默认操控盘；玩家默认聊天。
   const firstTab = tab || (state.me?.is_host ? "host" : "chat");
 
   state.floatOpen = true;
@@ -1821,9 +1845,11 @@ function openFloatPanel(tab) {
   $("floatDock").classList.add("panel-open");
 
   placeFloatPanelNearBubble();
-  switchFloatTab(firstTab);
-  state.unreadDiscussion = 0;
   renderFloatDock();
+  switchFloatTab(firstTab);
+  // 再强制一次，避免 render/隐藏 host-only 后 active 状态被旧 DOM 影响。
+  if (state.me?.is_host) switchFloatTab("host");
+  state.unreadDiscussion = 0;
   scrollFloatChatToBottom(true);
 }
 
@@ -1832,6 +1858,8 @@ function closeFloatPanel() {
   $("floatPanel").classList.add("hidden");
   $("floatBubble").classList.remove("hidden");
   $("floatDock").classList.remove("panel-open");
+  $("floatDock").classList.remove("float-panel-mode");
+  $("floatDock").classList.add("float-bubble-mode");
   restoreFloatBubbleAnchor();
   renderFloatDock();
 }
@@ -1985,7 +2013,7 @@ function setupFloatDrag() {
       event.preventDefault();
       return;
     }
-    openFloatPanel(state.me?.is_host ? "host" : "chat");
+    openFloatPanel();
   });
 
   const chatList = $("floatChatList");
@@ -2057,9 +2085,26 @@ function bindEvents() {
 
   $("createMode").addEventListener("change", syncCreateQuestionMasterUI);
 
-  $("roomMode").addEventListener("change", syncRoomQuestionMasterUI);
+  function markHostSettingsDirty() {
+    state.hostSettingsDirty = true;
+  }
 
-  $("roomModeratorMode").addEventListener("change", syncRoomQuestionMasterUI);
+  ["roomMode", "roomModeratorMode", "roomSpeakingMode", "roomDifficulty", "roomCategory", "roomUndercoverCount", "roomBlankEnabled", "roomRequirement", "roomManualCivilianWord", "roomManualUndercoverWord"].forEach((id) => {
+    const node = $(id);
+    if (!node) return;
+    node.addEventListener("input", markHostSettingsDirty);
+    node.addEventListener("change", markHostSettingsDirty);
+  });
+
+  $("roomMode").addEventListener("change", () => {
+    markHostSettingsDirty();
+    syncRoomQuestionMasterUI();
+  });
+
+  $("roomModeratorMode").addEventListener("change", () => {
+    markHostSettingsDirty();
+    syncRoomQuestionMasterUI();
+  });
 
   $("btnToggleWord").addEventListener("click", () => {
     state.wordVisible = !state.wordVisible;
@@ -2138,6 +2183,7 @@ async function boot() {
   bindEvents();
   setupMobileKeyboardFix();
   setupFloatDrag();
+  if ($("floatDock")) $("floatDock").classList.add("float-bubble-mode");
   fillPromptTextareas();
   fillAiInputs();
   switchHomePanel("create");

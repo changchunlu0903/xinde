@@ -1245,3 +1245,32 @@ textarea:disabled {
   margin-bottom: 12px;
   font-size: 13px;
 }
+
+
+/* V13: floating panel polish */
+.float-chat-list.user-reading {
+  scroll-behavior: auto;
+}
+
+.float-panel {
+  overscroll-behavior: contain;
+}
+
+.float-dock.panel-open {
+  touch-action: none;
+}
+
+.float-dock.panel-open .float-panel {
+  animation: floatPanelPop .16s ease-out;
+}
+
+@keyframes floatPanelPop {
+  from {
+    opacity: .6;
+    transform: translateY(8px) scale(.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

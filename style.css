@@ -1274,3 +1274,24 @@ textarea:disabled {
     transform: translateY(0) scale(1);
   }
 }
+
+
+/* V14: stronger floating panel placement + host setting editing hint */
+.float-dock.float-panel-mode {
+  right: auto !important;
+  bottom: auto !important;
+}
+
+.float-dock.float-bubble-mode .float-panel {
+  display: none !important;
+}
+
+.float-panel.float-measuring {
+  visibility: hidden;
+  display: grid !important;
+  pointer-events: none;
+}
+
+.mini-tip {
+  margin-bottom: 12px;
+}

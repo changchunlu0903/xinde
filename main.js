@@ -375,7 +375,9 @@ async function createRoom() {
 
     const roomCode = randomRoomCode();
     const mode = $("createMode").value;
-    const moderatorMode = $("createModeratorMode").value;
+    // V12：自己想词时，房主就是出题者。出题者知道答案，不能参与本局。
+    // 所以手动出题强制使用“房主主持/出题主持”。
+    const moderatorMode = mode === "manual" ? "host" : $("createModeratorMode").value;
 
     const roomPayload = {
       room_code: roomCode,
@@ -598,7 +600,9 @@ function getBroadcast(room, players, votes) {
     },
     assigning: {
       title: "系统主持 · 身份确认",
-      text: `身份牌已发放。请所有玩家进入“身份”页查看自己的词。\n看完后房主点击“开始发言”。`,
+      text: room.mode === "manual"
+        ? `身份牌已发放。房主是出题主持，不参与本局。其他玩家进入“身份”页查看自己的词。\n看完后房主点击“开始发言”。`
+        : `身份牌已发放。请所有玩家进入“身份”页查看自己的词。\n看完后房主点击“开始发言”。`,
     },
     speaking: {
       title: "系统主持 · 发言阶段",
@@ -677,14 +681,14 @@ function renderHostControls() {
   $("roomManualCivilianWord").value = room.civilian_word || "";
   $("roomManualUndercoverWord").value = room.undercover_word || "";
 
-  $("selectModeratorWrap").classList.toggle("hidden", $("roomModeratorMode").value !== "select");
+  syncRoomQuestionMasterUI();
 
   const sel = $("roomModeratorSelect");
   sel.innerHTML = players
     .map((p) => `<option value="${p.id}" ${room.moderator_player_id === p.id ? "selected" : ""}>${escapeHtml(p.nickname)}</option>`)
     .join("");
 
-  $("roomManualWordsBox").classList.toggle("hidden", $("roomMode").value !== "manual");
+  syncRoomQuestionMasterUI();
   $("preStartControls").classList.toggle("hidden", room.phase !== "waiting");
 }
 
@@ -712,9 +716,11 @@ function renderMyCard() {
   }
 
   if (me.is_moderator) {
-    $("myRoleText").textContent = "主持人";
+    $("myRoleText").textContent = room.mode === "manual" && me.is_host ? "出题主持" : "主持人";
     $("myWordText").textContent = "不参与本局";
-    $("myCardTip").textContent = "你可以查看两组词，负责控场。";
+    $("myCardTip").textContent = room.mode === "manual" && me.is_host
+      ? "你是出题者，知道答案，所以不参与猜词。"
+      : "你可以查看两组词，负责控场。";
     return;
   }
 
@@ -990,9 +996,10 @@ function winnerName(winner) {
 
 async function syncRoomSettingsFromHostPanel() {
   const mode = $("roomMode").value;
+  const moderatorMode = mode === "manual" ? "host" : $("roomModeratorMode").value;
   const payload = {
     mode,
-    moderator_mode: $("roomModeratorMode").value,
+    moderator_mode: moderatorMode,
     speaking_mode: $("roomSpeakingMode").value,
     current_speaker_index: 0,
     category: $("roomCategory").value.trim() || "日常",
@@ -1000,7 +1007,7 @@ async function syncRoomSettingsFromHostPanel() {
     undercover_count: Number($("roomUndercoverCount").value || 1),
     blank_enabled: $("roomBlankEnabled").checked,
     requirement: $("roomRequirement").value.trim(),
-    moderator_player_id: $("roomModeratorMode").value === "select" ? $("roomModeratorSelect").value : null,
+    moderator_player_id: moderatorMode === "select" ? $("roomModeratorSelect").value : null,
   };
 
   if (mode === "manual") {
@@ -1061,7 +1068,12 @@ async function startGame() {
     if (players.length < 3) throw new Error("建议至少 3 人开始。");
 
     let moderatorId = null;
-    if (room.moderator_mode === "host") {
+
+    // V12：自己想词时，房主就是出题者，必须作为主持/旁观，不参与猜词。
+    // 如果房主也想玩，应该使用 AI 出词，因为 AI 出词没有玩家提前知道答案。
+    if (room.mode === "manual") {
+      moderatorId = room.host_player_id;
+    } else if (room.moderator_mode === "host") {
       moderatorId = room.host_player_id;
     } else if (room.moderator_mode === "select") {
       moderatorId = room.moderator_player_id;
@@ -1075,7 +1087,12 @@ async function startGame() {
     if (!words.civilianWord || !words.undercoverWord) throw new Error("还没有平民词和卧底词。");
 
     const contestants = players.filter((p) => p.id !== moderatorId);
-    if (contestants.length < 3) throw new Error("主持人不参与时，至少还需要 3 个玩家。");
+    if (contestants.length < 3) {
+      if (room.mode === "manual") {
+        throw new Error("自己想词模式里，房主是出题主持，不能参与。本局至少需要 3 个参与玩家 + 1 个出题主持。");
+      }
+      throw new Error("主持人不参与时，至少还需要 3 个玩家。");
+    }
 
     const undercoverCount = Math.max(1, Math.min(Number(room.undercover_count || 1), Math.max(1, contestants.length - 1)));
     const shuffled = shuffle(contestants);
@@ -1887,6 +1904,43 @@ function setupFloatDrag() {
   });
 }
 
+
+function syncCreateQuestionMasterUI() {
+  const mode = $("createMode")?.value;
+  if (!$("createModeratorMode")) return;
+
+  if (mode === "manual") {
+    $("createModeratorMode").value = "host";
+    $("createModeratorMode").disabled = true;
+  } else {
+    $("createModeratorMode").disabled = false;
+  }
+
+  if ($("manualWordsBox")) {
+    $("manualWordsBox").classList.toggle("hidden", mode !== "manual");
+  }
+}
+
+function syncRoomQuestionMasterUI() {
+  const mode = $("roomMode")?.value;
+  if (!$("roomModeratorMode")) return;
+
+  if (mode === "manual") {
+    $("roomModeratorMode").value = "host";
+    $("roomModeratorMode").disabled = true;
+    if ($("selectModeratorWrap")) $("selectModeratorWrap").classList.add("hidden");
+  } else {
+    $("roomModeratorMode").disabled = false;
+    if ($("selectModeratorWrap")) {
+      $("selectModeratorWrap").classList.toggle("hidden", $("roomModeratorMode").value !== "select");
+    }
+  }
+
+  if ($("roomManualWordsBox")) {
+    $("roomManualWordsBox").classList.toggle("hidden", mode !== "manual");
+  }
+}
+
 function bindEvents() {
   $("btnCreateRoom").addEventListener("click", createRoom);
   $("btnJoinRoom").addEventListener("click", joinRoom);
@@ -1901,17 +1955,11 @@ function bindEvents() {
     btn.addEventListener("click", () => switchRoomPage(btn.dataset.page));
   });
 
-  $("createMode").addEventListener("change", () => {
-    $("manualWordsBox").classList.toggle("hidden", $("createMode").value !== "manual");
-  });
+  $("createMode").addEventListener("change", syncCreateQuestionMasterUI);
 
-  $("roomMode").addEventListener("change", () => {
-    $("roomManualWordsBox").classList.toggle("hidden", $("roomMode").value !== "manual");
-  });
+  $("roomMode").addEventListener("change", syncRoomQuestionMasterUI);
 
-  $("roomModeratorMode").addEventListener("change", () => {
-    $("selectModeratorWrap").classList.toggle("hidden", $("roomModeratorMode").value !== "select");
-  });
+  $("roomModeratorMode").addEventListener("change", syncRoomQuestionMasterUI);
 
   $("btnToggleWord").addEventListener("click", () => {
     state.wordVisible = !state.wordVisible;
@@ -1993,6 +2041,8 @@ async function boot() {
   fillPromptTextareas();
   fillAiInputs();
   switchHomePanel("create");
+  syncCreateQuestionMasterUI();
+  syncRoomQuestionMasterUI();
 
   if (!isConfigured) $("configWarning").classList.remove("hidden");
 

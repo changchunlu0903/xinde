@@ -62,3 +62,12 @@ SUPABASE_ANON_KEY
 Settings → Pages → Deploy from a branch → main → /root → Save
 
 等链接生成后打开测试。
+
+
+## V9 更新
+
+V9 主要修复：
+- 手机网页里 Realtime 偶尔不刷新，需要手动刷新才能看到发言/投票/阶段变化。
+- 增加 1.8 秒轻量自动同步兜底。
+- 切回页面、切换房间分页、提交发言/讨论/投票后会立刻重新拉取数据。
+- 数据库结构不变，不需要重新跑 SQL。

@@ -855,3 +855,78 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* V10: mobile keyboard/input alignment fix */
+:root {
+  --keyboard-height: 0px;
+  --real-vh: 100vh;
+}
+
+html {
+  min-height: 100%;
+  min-height: var(--real-vh);
+}
+
+body {
+  min-height: 100%;
+  min-height: var(--real-vh);
+  padding-bottom: var(--keyboard-height);
+}
+
+/* iOS 会在输入框字体小于 16px 时自动放大，导致键盘和输入框错位 */
+input,
+select,
+textarea {
+  font-size: 16px !important;
+  line-height: 1.45;
+}
+
+textarea {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 聚焦输入时，给滚动定位留出键盘空间 */
+input,
+select,
+textarea,
+.speech-input-box,
+.discussion-input-box,
+.ai-connect-box {
+  scroll-margin-bottom: calc(180px + env(safe-area-inset-bottom));
+}
+
+.app {
+  padding-bottom: calc(42px + env(safe-area-inset-bottom) + var(--keyboard-height));
+}
+
+/* 键盘弹出时，底部输入区不要贴着键盘 */
+.speech-input-box,
+.discussion-input-box {
+  padding-bottom: calc(6px + env(safe-area-inset-bottom));
+}
+
+/* 手机端把标签栏改成更稳的顶部横向滚动，避免键盘弹出时挤压错位 */
+@media (max-width: 760px) {
+  .page-tabs {
+    display: flex;
+    overflow-x: auto;
+    gap: 8px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .page-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab {
+    flex: 0 0 auto;
+    min-width: 72px;
+    padding: 0 12px;
+  }
+
+  .card {
+    scroll-margin-bottom: calc(220px + env(safe-area-inset-bottom));
+  }
+}

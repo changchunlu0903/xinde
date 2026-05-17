@@ -1231,3 +1231,17 @@ textarea,
     height: 56px;
   }
 }
+
+
+/* V12: question master / manual mode clarity */
+select:disabled,
+input:disabled,
+textarea:disabled {
+  opacity: .72;
+  background: rgba(230,235,250,.72);
+}
+
+.mini-tip {
+  margin-bottom: 12px;
+  font-size: 13px;
+}

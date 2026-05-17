@@ -88,6 +88,8 @@ let state = {
   floatOpen: false,
   unreadDiscussion: 0,
   lastSeenDiscussionCount: 0,
+  floatForceScrollBottom: false,
+  floatBubbleAnchor: null,
 };
 
 const localKey = {
@@ -1601,7 +1603,10 @@ function setupMobileKeyboardFix() {
     window.visualViewport.addEventListener("scroll", updateViewportVars);
   }
 
-  window.addEventListener("resize", updateViewportVars);
+  window.addEventListener("resize", () => {
+    updateViewportVars();
+    if (state.floatOpen) placeFloatPanelNearBubble();
+  });
   window.addEventListener("orientationchange", () => {
     setTimeout(updateViewportVars, 300);
   });
@@ -1648,11 +1653,28 @@ function renderFloatDock() {
   $("floatUnread").classList.toggle("hidden", unread <= 0);
 }
 
+function isFloatChatNearBottom(list) {
+  if (!list) return true;
+  return list.scrollHeight - list.scrollTop - list.clientHeight < 90;
+}
+
+function scrollFloatChatToBottom(force = false) {
+  const list = $("floatChatList");
+  if (!list) return;
+  if (!force && !isFloatChatNearBottom(list)) return;
+
+  requestAnimationFrame(() => {
+    list.scrollTop = list.scrollHeight;
+  });
+}
+
 function renderFloatChat() {
   const list = $("floatChatList");
   if (!list || !state.room) return;
 
+  const wasNearBottom = isFloatChatNearBottom(list);
   const discussions = getCurrentRoundDiscussions();
+
   if (!state.floatOpen && discussions.length > state.lastSeenDiscussionCount) {
     state.unreadDiscussion += discussions.length - state.lastSeenDiscussionCount;
   }
@@ -1676,11 +1698,13 @@ function renderFloatChat() {
     `;
   }).join("");
 
-  if (state.floatOpen) {
-    requestAnimationFrame(() => {
-      list.scrollTop = list.scrollHeight;
-    });
+  // V13：只有在用户原本就在底部，或者刚打开/刚发送时才自动滚到底。
+  // 用户往上翻聊天记录时，不再强行跳回最新消息。
+  if (state.floatOpen && (wasNearBottom || state.floatForceScrollBottom)) {
+    scrollFloatChatToBottom(true);
   }
+
+  state.floatForceScrollBottom = false;
 }
 
 function getFloatHostHint() {
@@ -1732,24 +1756,83 @@ function switchFloatTab(tab) {
   $("floatHostPage").classList.toggle("active", tab === "host");
 }
 
-function openFloatPanel(tab = "chat") {
+function placeFloatPanelNearBubble() {
+  const dock = $("floatDock");
+  const panel = $("floatPanel");
+  if (!dock || !panel) return;
+
+  const anchor = state.floatBubbleAnchor || dock.getBoundingClientRect();
+  const panelWidth = panel.offsetWidth || 390;
+  const panelHeight = panel.offsetHeight || Math.min(window.innerHeight * 0.72, 560);
+  const gap = 10;
+
+  let left = anchor.left;
+  let top;
+
+  // V13：按钮在下面时，弹窗自动出现在按钮上方，不会掉到屏幕外。
+  if (anchor.top + panelHeight > window.innerHeight - 8) {
+    top = anchor.top - panelHeight - gap;
+  } else {
+    top = anchor.top;
+  }
+
+  if (top < 8) top = Math.max(8, window.innerHeight - panelHeight - 8);
+  if (left + panelWidth > window.innerWidth - 8) {
+    left = window.innerWidth - panelWidth - 8;
+  }
+  if (left < 8) left = 8;
+
+  dock.style.left = `${left}px`;
+  dock.style.top = `${top}px`;
+  dock.style.right = "auto";
+  dock.style.bottom = "auto";
+}
+
+function restoreFloatBubbleAnchor() {
+  const dock = $("floatDock");
+  if (!dock || !state.floatBubbleAnchor) return;
+
+  const width = 58;
+  const height = 58;
+  let left = Math.min(window.innerWidth - width - 8, Math.max(8, state.floatBubbleAnchor.left));
+  let top = Math.min(window.innerHeight - height - 8, Math.max(8, state.floatBubbleAnchor.top));
+
+  dock.style.left = `${left}px`;
+  dock.style.top = `${top}px`;
+  dock.style.right = "auto";
+  dock.style.bottom = "auto";
+  saveFloatPosition(left, top);
+}
+
+function openFloatPanel(tab) {
+  const dock = $("floatDock");
+  if (dock) {
+    const rect = dock.getBoundingClientRect();
+    state.floatBubbleAnchor = { left: rect.left, top: rect.top };
+  }
+
+  // V13：房主第一次打开默认是“房主操控”，玩家默认是“聊天”。
+  const firstTab = tab || (state.me?.is_host ? "host" : "chat");
+
   state.floatOpen = true;
+  state.floatForceScrollBottom = true;
   $("floatPanel").classList.remove("hidden");
   $("floatBubble").classList.add("hidden");
-  switchFloatTab(tab);
+  $("floatDock").classList.add("panel-open");
+
+  placeFloatPanelNearBubble();
+  switchFloatTab(firstTab);
   state.unreadDiscussion = 0;
   renderFloatDock();
-
-  setTimeout(() => {
-    const list = $("floatChatList");
-    if (list) list.scrollTop = list.scrollHeight;
-  }, 80);
+  scrollFloatChatToBottom(true);
 }
 
 function closeFloatPanel() {
   state.floatOpen = false;
   $("floatPanel").classList.add("hidden");
   $("floatBubble").classList.remove("hidden");
+  $("floatDock").classList.remove("panel-open");
+  restoreFloatBubbleAnchor();
   renderFloatDock();
 }
 
@@ -1785,8 +1868,10 @@ async function sendFloatChat() {
   }
 
   input.value = "";
+  state.floatForceScrollBottom = true;
   await loadAll(state.room.id, state.me.id, { silent: true });
   renderFloatDock();
+  scrollFloatChatToBottom(true);
 }
 
 async function floatNextStep() {
@@ -1900,7 +1985,22 @@ function setupFloatDrag() {
       event.preventDefault();
       return;
     }
-    openFloatPanel("chat");
+    openFloatPanel(state.me?.is_host ? "host" : "chat");
+  });
+
+  const chatList = $("floatChatList");
+  if (chatList) {
+    chatList.addEventListener("scroll", () => {
+      chatList.classList.toggle("user-reading", !isFloatChatNearBottom(chatList));
+    }, { passive: true });
+  }
+
+  // V13：点旁边空白处关闭悬浮窗。
+  document.addEventListener("pointerdown", (event) => {
+    if (!state.floatOpen) return;
+    if (!dock.contains(event.target)) {
+      closeFloatPanel();
+    }
   });
 }
 

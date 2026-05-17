@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>谁是卧底 · 联机版 V11</title>
+  <title>谁是卧底 · 联机版 V12</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
@@ -33,7 +33,7 @@
           <p class="eyebrow">房间码联机 · 自动同步 · 公开讨论 · 投票复盘</p>
           <h2>开一局清楚、有记录、能讨论的卧底局。</h2>
           <p class="sub">
-            先发言，再进入公开讨论区，所有玩家都能看到所有人的讨论消息。V11 增加可移动悬浮窗：玩家聊天和房主操控都能随时打开。
+            先发言，再进入公开讨论区，所有玩家都能看到所有人的讨论消息。V12 修正出题者规则：自己想词时房主作为出题主持，不参与本局。
           </p>
         </div>
       </section>
@@ -142,7 +142,7 @@
 
         <div id="manualWordsBox" class="manual-box">
           <div class="tip">
-            自己想词模式会直接使用下面两个词。房主如果知道答案，最好只当主持人，别参与本局。
+            自己想词模式里，出题者知道答案，所以房主会自动成为“出题主持”，不参与本局。想让房主也参与，请改用 AI 出词。
           </div>
           <div class="grid2">
             <label>
@@ -400,6 +400,7 @@
             </label>
 
             <div id="roomManualWordsBox" class="manual-box">
+              <div class="tip mini-tip">自己想词时，房主就是出题主持，系统会自动让房主不参与本局。</div>
               <div class="grid2">
                 <label>
                   平民词

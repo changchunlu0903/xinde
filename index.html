@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>谁是卧底 · 联机版 V8</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div class="soft-bg bg-a"></div>
+  <div class="soft-bg bg-b"></div>
+  <div class="paper-grid"></div>
+
+  <main class="app">
+    <header class="topbar">
+      <button id="btnBackHome" class="round-btn hidden">首页</button>
+      <div class="brand">
+        <span>UNDERCOVER ROOM</span>
+        <h1>谁是卧底</h1>
+      </div>
+      <button id="btnCopyRoomTop" class="round-btn hidden">码</button>
+    </header>
+
+    <section id="configWarning" class="alert hidden">
+      <b>还没配置 Supabase</b>
+      <p>打开 <code>main.js</code>，填入 <code>SUPABASE_URL</code> 和 <code>SUPABASE_ANON_KEY</code>。</p>
+    </section>
+
+    <!-- 首页 -->
+    <section id="homeView" class="view active">
+      <section class="home-hero card">
+        <div>
+          <p class="eyebrow">房间码联机 · 发言 · 公开讨论 · 投票复盘</p>
+          <h2>开一局清楚、有记录、能讨论的卧底局。</h2>
+          <p class="sub">
+            先发言，再进入公开讨论区，所有玩家都能看到所有人的讨论消息。最后投票淘汰。
+          </p>
+        </div>
+      </section>
+
+      <section class="home-actions">
+        <button class="big-tile active" data-home-panel="create">
+          <span>01</span>
+          <b>创建房间</b>
+          <p>房主开局，设置模式、词语和发言方式。</p>
+        </button>
+        <button class="big-tile" data-home-panel="join">
+          <span>02</span>
+          <b>加入房间</b>
+          <p>输入房间码，进入同一局游戏。</p>
+        </button>
+        <button class="big-tile" data-home-panel="ai">
+          <span>AI</span>
+          <b>AI 设置</b>
+          <p>填写 API URL、Key、模型和提示词。</p>
+        </button>
+      </section>
+
+      <section id="homeCreatePanel" class="home-panel card active">
+        <div class="section-head">
+          <div>
+            <span>HOST</span>
+            <h3>创建房间</h3>
+          </div>
+        </div>
+
+        <label>
+          你的昵称
+          <input id="createNickname" type="text" placeholder="比如：小朱" maxlength="18" />
+        </label>
+
+        <div class="grid2">
+          <label>
+            出词模式
+            <select id="createMode">
+              <option value="manual">自己想词</option>
+              <option value="ai">AI 出词</option>
+            </select>
+          </label>
+
+          <label>
+            主持方式
+            <select id="createModeratorMode">
+              <option value="system">系统主持</option>
+              <option value="host">房主主持</option>
+              <option value="random">随机主持</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="grid2">
+          <label>
+            发言模式
+            <select id="createSpeakingMode">
+              <option value="ordered_text">顺序文字发言</option>
+              <option value="ordered_voice">顺序语音转文字</option>
+              <option value="free_text">自由文字发言</option>
+              <option value="offline">线下口头发言</option>
+            </select>
+          </label>
+
+          <label>
+            难度
+            <select id="createDifficulty">
+              <option value="简单">简单</option>
+              <option value="中等" selected>中等</option>
+              <option value="困难">困难</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="grid2">
+          <label>
+            分类
+            <select id="createCategory">
+              <option value="日常">日常</option>
+              <option value="校园">校园</option>
+              <option value="恋爱">恋爱</option>
+              <option value="食物">食物</option>
+              <option value="影视">影视</option>
+              <option value="动漫">动漫</option>
+              <option value="古风">古风</option>
+              <option value="自定义">自定义</option>
+            </select>
+          </label>
+
+          <label>
+            卧底数量
+            <input id="createUndercoverCount" type="number" value="1" min="1" max="99" />
+          </label>
+        </div>
+
+        <label class="switch-row">
+          <span>开启白板</span>
+          <input id="createBlankEnabled" type="checkbox" />
+        </label>
+
+        <label>
+          给 AI 的额外要求 / 自定义分类
+          <textarea id="createRequirement" placeholder="例如：校园恋爱向，词语要相似但不能太明显。"></textarea>
+        </label>
+
+        <div id="manualWordsBox" class="manual-box">
+          <div class="tip">
+            自己想词模式会直接使用下面两个词。房主如果知道答案，最好只当主持人，别参与本局。
+          </div>
+          <div class="grid2">
+            <label>
+              平民词
+              <input id="manualCivilianWord" type="text" placeholder="例如：奶茶" />
+            </label>
+            <label>
+              卧底词
+              <input id="manualUndercoverWord" type="text" placeholder="例如：咖啡" />
+            </label>
+          </div>
+        </div>
+
+        <button id="btnCreateRoom" class="primary-btn">创建房间</button>
+      </section>
+
+      <section id="homeJoinPanel" class="home-panel card">
+        <div class="section-head">
+          <div>
+            <span>PLAYER</span>
+            <h3>加入房间</h3>
+          </div>
+        </div>
+
+        <label>
+          你的昵称
+          <input id="joinNickname" type="text" placeholder="比如：朝阳" maxlength="18" />
+        </label>
+
+        <label>
+          房间码
+          <input id="joinRoomCode" type="text" placeholder="输入 6 位数字" maxlength="6" inputmode="numeric" />
+        </label>
+
+        <button id="btnJoinRoom" class="primary-btn">加入房间</button>
+      </section>
+
+      <section id="homeAiPanel" class="home-panel card">
+        <div class="section-head">
+          <div>
+            <span>AI SETTINGS</span>
+            <h3>AI 接入与提示词</h3>
+          </div>
+          <button id="btnResetPrompts" class="small-btn">恢复默认</button>
+        </div>
+
+        <div class="tip strong">
+          Supabase 不是 AI。Supabase 负责联机和数据库；AI 出词需要部署 <code>generate-words</code> Edge Function。
+        </div>
+
+        <div class="ai-connect-box">
+          <div class="section-head small-head">
+            <div>
+              <span>AI CONNECTION</span>
+              <h3>AI 接入设置</h3>
+            </div>
+            <button id="btnSaveAiConfig" class="small-btn">保存接入</button>
+          </div>
+
+          <label>
+            AI API URL
+            <input id="aiBaseUrl" type="text" placeholder="例如：https://api.openai.com/v1 或你的第三方 /v1 地址" />
+          </label>
+
+          <div class="grid2">
+            <label>
+              AI API Key
+              <input id="aiApiKey" type="password" placeholder="sk-... / 你的第三方 key" autocomplete="off" />
+            </label>
+
+            <label>
+              UID / 用户标识（可选）
+              <input id="aiUid" type="text" placeholder="有些第三方平台才需要，不需要可空着" />
+            </label>
+          </div>
+
+          <div class="grid2">
+            <label>
+              当前模型
+              <input id="aiModel" type="text" placeholder="例如：gpt-4o-mini" />
+            </label>
+
+            <label>
+              自动寻找模型
+              <select id="aiModelSelect">
+                <option value="">先点击“寻找模型”</option>
+              </select>
+            </label>
+          </div>
+
+          <button id="btnFindModels" class="normal-btn wide-btn">自动寻找模型</button>
+        </div>
+
+        <label>
+          AI 出词系统提示词
+          <textarea id="wordSystemPrompt" class="prompt-area"></textarea>
+        </label>
+
+        <label>
+          AI 出词任务提示词
+          <textarea id="wordUserPrompt" class="prompt-area"></textarea>
+        </label>
+
+        <label>
+          系统主持风格提示词
+          <textarea id="hostPrompt" class="prompt-area"></textarea>
+        </label>
+
+        <button id="btnSavePrompts" class="primary-btn">保存提示词</button>
+      </section>
+    </section>
+
+    <!-- 房间页 -->
+    <section id="roomView" class="view">
+      <section class="room-summary card">
+        <div>
+          <span class="eyebrow">ROOM CODE</span>
+          <div id="roomCodeText" class="room-code">------</div>
+        </div>
+        <div class="phase-chip">
+          <span>当前阶段</span>
+          <b id="phaseText">等待玩家</b>
+        </div>
+      </section>
+
+      <section class="host-line card">
+        <div class="host-avatar">主</div>
+        <div>
+          <b id="broadcastTitle">系统主持</b>
+          <p id="broadcastText">欢迎来到谁是卧底。请等待玩家加入。</p>
+        </div>
+      </section>
+
+      <nav class="page-tabs">
+        <button class="tab active" data-page="desk">房间</button>
+        <button class="tab host-only" data-page="host">房主</button>
+        <button class="tab" data-page="card">身份</button>
+        <button class="tab" data-page="speak">发言</button>
+        <button class="tab" data-page="discuss">讨论</button>
+        <button class="tab" data-page="players">玩家</button>
+        <button class="tab" data-page="vote">投票</button>
+        <button class="tab host-only" data-page="settings">AI</button>
+      </nav>
+
+      <section id="pageDesk" class="room-page active">
+        <div class="card">
+          <div class="section-head">
+            <div>
+              <span>FLOW</span>
+              <h3>游戏流程</h3>
+            </div>
+            <div id="roundPill" class="pill">第 1 轮</div>
+          </div>
+
+          <div class="flow-list">
+            <div class="flow-item" data-phase-name="waiting"><b>1</b><span>等待玩家</span></div>
+            <div class="flow-item" data-phase-name="assigning"><b>2</b><span>查看身份</span></div>
+            <div class="flow-item" data-phase-name="speaking"><b>3</b><span>轮流发言</span></div>
+            <div class="flow-item" data-phase-name="discussing"><b>4</b><span>公开讨论</span></div>
+            <div class="flow-item" data-phase-name="voting"><b>5</b><span>投票淘汰</span></div>
+            <div class="flow-item" data-phase-name="result"><b>6</b><span>本轮结果</span></div>
+          </div>
+        </div>
+
+        <div id="resultPanel" class="card hidden">
+          <div class="section-head">
+            <div>
+              <span>RESULT</span>
+              <h3>本轮结果</h3>
+            </div>
+            <div id="winnerPill" class="pill">RESULT</div>
+          </div>
+          <p id="resultText" class="result-text">暂无结果。</p>
+          <div id="revealBox" class="reveal-box hidden"></div>
+        </div>
+      </section>
+
+      <section id="pageHost" class="room-page">
+        <section id="hostPanel" class="card hidden">
+          <div class="section-head">
+            <div>
+              <span>HOST CONTROL</span>
+              <h3>房主控制台</h3>
+            </div>
+            <button id="btnLeaveRoomHost" class="small-btn danger-small">退出</button>
+          </div>
+
+          <div id="preStartControls">
+            <div class="grid2">
+              <label>
+                出词模式
+                <select id="roomMode">
+                  <option value="manual">自己想词</option>
+                  <option value="ai">AI 出词</option>
+                </select>
+              </label>
+
+              <label>
+                主持方式
+                <select id="roomModeratorMode">
+                  <option value="system">系统主持</option>
+                  <option value="host">房主主持</option>
+                  <option value="random">随机主持</option>
+                  <option value="select">指定玩家主持</option>
+                </select>
+              </label>
+            </div>
+
+            <label id="selectModeratorWrap" class="hidden">
+              指定主持人
+              <select id="roomModeratorSelect"></select>
+            </label>
+
+            <div class="grid2">
+              <label>
+                发言模式
+                <select id="roomSpeakingMode">
+                  <option value="ordered_text">顺序文字发言</option>
+                  <option value="ordered_voice">顺序语音转文字</option>
+                  <option value="free_text">自由文字发言</option>
+                  <option value="offline">线下口头发言</option>
+                </select>
+              </label>
+
+              <label>
+                难度
+                <select id="roomDifficulty">
+                  <option value="简单">简单</option>
+                  <option value="中等">中等</option>
+                  <option value="困难">困难</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="grid2">
+              <label>
+                分类
+                <input id="roomCategory" type="text" placeholder="日常 / 校园 / 自定义" />
+              </label>
+
+              <label>
+                卧底数量
+                <input id="roomUndercoverCount" type="number" min="1" value="1" />
+              </label>
+            </div>
+
+            <label class="switch-row">
+              <span>开启白板</span>
+              <input id="roomBlankEnabled" type="checkbox" />
+            </label>
+
+            <label>
+              给 AI 的要求
+              <textarea id="roomRequirement" placeholder="例如：词语不要太明显，要适合口头描述。"></textarea>
+            </label>
+
+            <div id="roomManualWordsBox" class="manual-box">
+              <div class="grid2">
+                <label>
+                  平民词
+                  <input id="roomManualCivilianWord" type="text" placeholder="平民词" />
+                </label>
+                <label>
+                  卧底词
+                  <input id="roomManualUndercoverWord" type="text" placeholder="卧底词" />
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="control-grid">
+            <button id="btnStartGame" class="primary-btn">开始并发词</button>
+            <button id="btnStartSpeaking" class="normal-btn">开始发言</button>
+            <button id="btnStartDiscussing" class="normal-btn">开始讨论</button>
+            <button id="btnStartVoting" class="normal-btn">开始投票</button>
+            <button id="btnResolveVote" class="normal-btn">统计投票</button>
+            <button id="btnNextRound" class="normal-btn">下一轮</button>
+            <button id="btnResetRoom" class="danger-btn">重开</button>
+          </div>
+
+          <div class="host-manage">
+            <div class="section-head">
+              <div>
+                <span>MANAGE</span>
+                <h3>玩家管理</h3>
+              </div>
+            </div>
+            <div id="hostManageList" class="list"></div>
+          </div>
+        </section>
+      </section>
+
+      <section id="pageCard" class="room-page">
+        <section class="card">
+          <div class="section-head">
+            <div>
+              <span>PRIVATE CARD</span>
+              <h3>我的身份牌</h3>
+            </div>
+            <div id="myStatusPill" class="pill">玩家</div>
+          </div>
+
+          <div id="myCard" class="identity-card locked">
+            <span id="myRoleText">等待发词</span>
+            <b id="myWordText">点击查看</b>
+            <em id="myCardTip">注意别让别人看到。</em>
+          </div>
+
+          <button id="btnToggleWord" class="primary-btn">显示 / 隐藏身份</button>
+
+          <div id="moderatorWords" class="reveal-box hidden">
+            <b>主持人可见</b>
+            <p>平民词：<span id="modCivilianWord">-</span></p>
+            <p>卧底词：<span id="modUndercoverWord">-</span></p>
+          </div>
+        </section>
+      </section>
+
+      <section id="pageSpeak" class="room-page">
+        <section class="card">
+          <div class="section-head">
+            <div>
+              <span>SPEAKING PAGE</span>
+              <h3>发言页面</h3>
+            </div>
+            <div id="speakingModePill" class="pill">文字发言</div>
+          </div>
+
+          <div id="speakerPanel" class="speaker-panel">
+            <span>当前发言人</span>
+            <b id="currentSpeakerName">等待开始</b>
+            <p id="speakerHint">进入发言阶段后，这里会显示当前发言玩家。</p>
+          </div>
+
+          <div id="speechInputBox" class="speech-input-box">
+            <label>
+              本轮发言内容
+              <textarea id="speechInput" placeholder="输入你的发言，比如：这个东西一般会在夏天出现，很多人喜欢加冰。"></textarea>
+            </label>
+            <div class="speech-actions">
+              <button id="btnVoiceInput" class="normal-btn">语音转文字</button>
+              <button id="btnSubmitSpeech" class="primary-btn no-margin">提交发言</button>
+              <button id="btnSkipSpeech" class="normal-btn">跳过 / 下一个</button>
+            </div>
+            <p id="voiceStatus" class="sub">语音识别需要浏览器支持；不支持时请直接打字。</p>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-head">
+            <div>
+              <span>CURRENT ROUND</span>
+              <h3>本轮发言记录</h3>
+            </div>
+            <div id="currentSpeechCount" class="pill">0 条</div>
+          </div>
+          <div id="currentRoundSpeeches" class="list"></div>
+        </section>
+
+        <section class="card">
+          <div class="section-head">
+            <div>
+              <span>ROUND SUMMARY</span>
+              <h3>每轮发言总结</h3>
+            </div>
+          </div>
+          <div id="roundSummaries" class="summary-list"></div>
+        </section>
+      </section>
+
+      <section id="pageDiscuss" class="room-page">
+        <section class="card">
+          <div class="section-head">
+            <div>
+              <span>PUBLIC DISCUSSION</span>
+              <h3>公开讨论区</h3>
+            </div>
+            <div id="discussionCountPill" class="pill">0 条</div>
+          </div>
+
+          <div class="tip">
+            讨论区是公开的：所有玩家都能看到所有人的消息。淘汰玩家的历史消息会变灰。
+          </div>
+
+          <div id="discussionList" class="discussion-list"></div>
+
+          <div class="discussion-input-box">
+            <label>
+              讨论内容
+              <textarea id="discussionInput" placeholder="进入讨论阶段后，大家可以在这里互相质疑、解释、拉票。"></textarea>
+            </label>
+            <button id="btnSendDiscussion" class="primary-btn">发送讨论</button>
+          </div>
+        </section>
+      </section>
+
+      <section id="pagePlayers" class="room-page">
+        <section class="card">
+          <div class="section-head">
+            <div>
+              <span>PLAYERS</span>
+              <h3>玩家列表</h3>
+            </div>
+            <div id="playerCountPill" class="pill">0 人</div>
+          </div>
+          <div id="playersList" class="list"></div>
+          <button id="btnLeaveRoom" class="danger-btn leave-btn">退出房间</button>
+        </section>
+      </section>
+
+      <section id="pageVote" class="room-page">
+        <section id="votePanel" class="card">
+          <div class="section-head">
+            <div>
+              <span>VOTE</span>
+              <h3>投票区</h3>
+            </div>
+            <div id="voteCountPill" class="pill">0 票</div>
+          </div>
+          <p class="sub">进入投票阶段后，这里会出现可投票玩家。重复点击会覆盖上一票。</p>
+          <div id="voteList" class="list"></div>
+        </section>
+      </section>
+
+      <section id="pageSettings" class="room-page">
+        <section class="card">
+          <div class="section-head">
+            <div>
+              <span>AI SETTINGS</span>
+              <h3>AI 接入与提示词</h3>
+            </div>
+            <button id="btnResetPromptsRoom" class="small-btn">默认</button>
+          </div>
+
+          <div class="tip strong">
+            Supabase 只负责联机和数据库；AI 要部署 Edge Function，并在 Supabase 里设置或页面里填写 AI API Key。
+          </div>
+
+          <div class="ai-connect-box">
+            <div class="section-head small-head">
+              <div>
+                <span>AI CONNECTION</span>
+                <h3>AI 接入设置</h3>
+              </div>
+              <button id="btnSaveAiConfigRoom" class="small-btn">保存接入</button>
+            </div>
+
+            <label>
+              AI API URL
+              <input id="aiBaseUrlRoom" type="text" placeholder="例如：https://api.openai.com/v1 或你的第三方 /v1 地址" />
+            </label>
+
+            <div class="grid2">
+              <label>
+                AI API Key
+                <input id="aiApiKeyRoom" type="password" placeholder="sk-... / 你的第三方 key" autocomplete="off" />
+              </label>
+
+              <label>
+                UID / 用户标识（可选）
+                <input id="aiUidRoom" type="text" placeholder="有些第三方平台才需要，不需要可空着" />
+              </label>
+            </div>
+
+            <div class="grid2">
+              <label>
+                当前模型
+                <input id="aiModelRoom" type="text" placeholder="例如：gpt-4o-mini" />
+              </label>
+
+              <label>
+                自动寻找模型
+                <select id="aiModelSelectRoom">
+                  <option value="">先点击“寻找模型”</option>
+                </select>
+              </label>
+            </div>
+
+            <button id="btnFindModelsRoom" class="normal-btn wide-btn">自动寻找模型</button>
+          </div>
+
+          <label>
+            AI 出词系统提示词
+            <textarea id="wordSystemPromptRoom" class="prompt-area"></textarea>
+          </label>
+
+          <label>
+            AI 出词任务提示词
+            <textarea id="wordUserPromptRoom" class="prompt-area"></textarea>
+          </label>
+
+          <label>
+            系统主持风格提示词
+            <textarea id="hostPromptRoom" class="prompt-area"></textarea>
+          </label>
+
+          <button id="btnSavePromptsRoom" class="primary-btn">保存提示词</button>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

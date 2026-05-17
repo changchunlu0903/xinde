@@ -85,6 +85,9 @@ let state = {
   wordVisible: false,
   recognition: null,
   recognizing: false,
+  floatOpen: false,
+  unreadDiscussion: 0,
+  lastSeenDiscussionCount: 0,
 };
 
 const localKey = {
@@ -92,6 +95,7 @@ const localKey = {
   playerId: "undercover_player_id",
   prompts: "undercover_ai_prompts_v3",
   aiConfig: "undercover_ai_config_v4",
+  floatPos: "undercover_float_pos_v11",
 };
 
 function toast(message) {
@@ -276,6 +280,8 @@ async function forceHome(message = "已返回首页。") {
   $("roomView").classList.remove("active");
   $("btnBackHome").classList.add("hidden");
   $("btnCopyRoomTop").classList.add("hidden");
+  if ($("floatDock")) $("floatDock").classList.add("hidden");
+  state.floatOpen = false;
 
   const url = new URL(location.href);
   url.searchParams.delete("room");
@@ -646,6 +652,7 @@ function render() {
   renderResultPanel();
   renderFlow();
   updateHostButtons();
+  renderFloatDock();
 }
 
 function renderFlow() {
@@ -1593,6 +1600,293 @@ function setupMobileKeyboardFix() {
   });
 }
 
+
+function getCurrentRoundDiscussions() {
+  const round = Number(state.room?.current_round || 1);
+  return state.speeches.filter((s) => Number(s.round) === round && s.kind === "discussion");
+}
+
+function renderFloatDock() {
+  const dock = $("floatDock");
+  if (!dock) return;
+
+  const inRoom = !!state.room && !!state.me;
+  dock.classList.toggle("hidden", !inRoom);
+  if (!inRoom) return;
+
+  const isHost = !!state.me?.is_host;
+  document.querySelectorAll("#floatPanel .host-only").forEach((el) => {
+    el.classList.toggle("hidden", !isHost);
+  });
+
+  $("floatRoomPhase").textContent = `${phaseMap[state.room.phase] || state.room.phase} · 第 ${state.room.current_round || 1} 轮`;
+  $("floatHostPhase").textContent = phaseMap[state.room.phase] || state.room.phase;
+  $("floatHostHint").textContent = getFloatHostHint();
+
+  renderFloatChat();
+  updateFloatHostButtons();
+
+  const unread = state.unreadDiscussion || 0;
+  $("floatUnread").textContent = unread > 99 ? "99+" : String(unread);
+  $("floatUnread").classList.toggle("hidden", unread <= 0);
+}
+
+function renderFloatChat() {
+  const list = $("floatChatList");
+  if (!list || !state.room) return;
+
+  const discussions = getCurrentRoundDiscussions();
+  if (!state.floatOpen && discussions.length > state.lastSeenDiscussionCount) {
+    state.unreadDiscussion += discussions.length - state.lastSeenDiscussionCount;
+  }
+  state.lastSeenDiscussionCount = discussions.length;
+
+  if (!discussions.length) {
+    list.innerHTML = `<div class="float-chat-empty">本轮还没有聊天。<br>可以像微信一样随时打开这里讨论。</div>`;
+    return;
+  }
+
+  list.innerHTML = discussions.map((msg) => {
+    const p = state.players.find((x) => x.id === msg.player_id);
+    const mine = msg.player_id === state.me?.id;
+    const dead = p && !p.is_alive && !p.is_moderator;
+    const time = msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+    return `
+      <div class="float-msg ${mine ? "mine" : ""} ${dead ? "dead" : ""}">
+        <div class="float-msg-name">${escapeHtml(p?.nickname || "未知玩家")} · ${time}${dead ? " · 已出局" : ""}</div>
+        <div class="float-msg-bubble">${escapeHtml(msg.content || "")}</div>
+      </div>
+    `;
+  }).join("");
+
+  if (state.floatOpen) {
+    requestAnimationFrame(() => {
+      list.scrollTop = list.scrollHeight;
+    });
+  }
+}
+
+function getFloatHostHint() {
+  const phase = state.room?.phase;
+  const map = {
+    waiting: "点击下一步会开始并发词。",
+    assigning: "玩家看完身份后，点击下一步进入发言。",
+    speaking: "发言差不多后，点击下一步进入公开讨论。",
+    discussing: "讨论结束后，点击下一步进入投票。",
+    voting: "点击下一步会统计投票。",
+    result: "如果没结束，点击下一步进入下一轮。",
+    ended: "本局已结束，可以重开房间。",
+  };
+  return map[phase] || "可以用这里快速推进流程。";
+}
+
+function updateFloatHostButtons() {
+  if (!$("btnFloatNextStep") || !state.room) return;
+
+  const phase = state.room.phase;
+  const labelMap = {
+    waiting: "下一步：开始并发词",
+    assigning: "下一步：开始发言",
+    speaking: "下一步：开始讨论",
+    discussing: "下一步：开始投票",
+    voting: "下一步：统计投票",
+    result: state.room.winner ? "本局结束：重开" : "下一步：进入下一轮",
+    ended: "重开房间",
+  };
+  $("btnFloatNextStep").textContent = labelMap[phase] || "下一步";
+
+  const isHost = !!state.me?.is_host;
+  ["btnFloatNextStep", "btnFloatStartSpeaking", "btnFloatStartDiscussing", "btnFloatStartVoting", "btnFloatResolveVote", "btnFloatNextRound", "btnFloatResetRoom"].forEach((id) => {
+    if ($(id)) $(id).disabled = !isHost;
+  });
+
+  $("btnFloatStartSpeaking").disabled = !isHost || !(phase === "assigning" || phase === "result");
+  $("btnFloatStartDiscussing").disabled = !isHost || phase !== "speaking";
+  $("btnFloatStartVoting").disabled = !isHost || !(phase === "discussing" || phase === "speaking");
+  $("btnFloatResolveVote").disabled = !isHost || phase !== "voting";
+  $("btnFloatNextRound").disabled = !isHost || phase !== "result" || !!state.room.winner;
+}
+
+function switchFloatTab(tab) {
+  document.querySelectorAll(".float-tab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.floatTab === tab);
+  });
+  $("floatChatPage").classList.toggle("active", tab === "chat");
+  $("floatHostPage").classList.toggle("active", tab === "host");
+}
+
+function openFloatPanel(tab = "chat") {
+  state.floatOpen = true;
+  $("floatPanel").classList.remove("hidden");
+  $("floatBubble").classList.add("hidden");
+  switchFloatTab(tab);
+  state.unreadDiscussion = 0;
+  renderFloatDock();
+
+  setTimeout(() => {
+    const list = $("floatChatList");
+    if (list) list.scrollTop = list.scrollHeight;
+  }, 80);
+}
+
+function closeFloatPanel() {
+  state.floatOpen = false;
+  $("floatPanel").classList.add("hidden");
+  $("floatBubble").classList.remove("hidden");
+  renderFloatDock();
+}
+
+async function sendFloatChat() {
+  const input = $("floatChatInput");
+  const content = input.value.trim();
+  if (!content) {
+    toast("先写点讨论内容。");
+    return;
+  }
+
+  if (!state.room || !state.me) {
+    toast("还没进入房间。");
+    return;
+  }
+
+  if (!state.me.is_alive && !state.me.is_host) {
+    toast("你已经出局，只能看聊天记录。");
+    return;
+  }
+
+  const { error } = await sb.from("speeches").insert({
+    room_id: state.room.id,
+    player_id: state.me.id,
+    round: state.room.current_round || 1,
+    kind: "discussion",
+    content,
+  });
+
+  if (error) {
+    toast(error.message);
+    return;
+  }
+
+  input.value = "";
+  await loadAll(state.room.id, state.me.id, { silent: true });
+  renderFloatDock();
+}
+
+async function floatNextStep() {
+  if (!state.me?.is_host || !state.room) return;
+
+  const phase = state.room.phase;
+  if (phase === "waiting") return startGame();
+  if (phase === "assigning") return setPhase("speaking");
+  if (phase === "speaking") return setPhase("discussing");
+  if (phase === "discussing") return setPhase("voting");
+  if (phase === "voting") return resolveVote();
+  if (phase === "result") {
+    if (state.room.winner) return resetRoom();
+    return nextRound();
+  }
+  if (phase === "ended") return resetRoom();
+}
+
+function applyFloatPosition() {
+  const dock = $("floatDock");
+  if (!dock) return;
+  try {
+    const pos = JSON.parse(localStorage.getItem(localKey.floatPos) || "null");
+    if (!pos) return;
+    dock.style.left = `${pos.left}px`;
+    dock.style.top = `${pos.top}px`;
+    dock.style.right = "auto";
+    dock.style.bottom = "auto";
+  } catch {}
+}
+
+function saveFloatPosition(left, top) {
+  localStorage.setItem(localKey.floatPos, JSON.stringify({ left, top }));
+}
+
+function setupFloatDrag() {
+  const dock = $("floatDock");
+  const bubble = $("floatBubble");
+  const header = $("floatPanelHeader");
+  if (!dock || !bubble || !header) return;
+
+  applyFloatPosition();
+
+  let dragging = false;
+  let startX = 0;
+  let startY = 0;
+  let startLeft = 0;
+  let startTop = 0;
+  let moved = false;
+
+  function startDrag(event) {
+    const point = event.touches?.[0] || event;
+    dragging = true;
+    moved = false;
+    startX = point.clientX;
+    startY = point.clientY;
+    const rect = dock.getBoundingClientRect();
+    startLeft = rect.left;
+    startTop = rect.top;
+    dock.style.left = `${startLeft}px`;
+    dock.style.top = `${startTop}px`;
+    dock.style.right = "auto";
+    dock.style.bottom = "auto";
+  }
+
+  function moveDrag(event) {
+    if (!dragging) return;
+    const point = event.touches?.[0] || event;
+    const dx = point.clientX - startX;
+    const dy = point.clientY - startY;
+    if (Math.abs(dx) + Math.abs(dy) > 6) moved = true;
+
+    const rect = dock.getBoundingClientRect();
+    const width = rect.width || 60;
+    const height = rect.height || 60;
+    const maxLeft = Math.max(8, window.innerWidth - width - 8);
+    const maxTop = Math.max(8, window.innerHeight - height - 8);
+
+    const left = Math.min(maxLeft, Math.max(8, startLeft + dx));
+    const top = Math.min(maxTop, Math.max(8, startTop + dy));
+
+    dock.style.left = `${left}px`;
+    dock.style.top = `${top}px`;
+    dock.style.right = "auto";
+    dock.style.bottom = "auto";
+    event.preventDefault?.();
+  }
+
+  function endDrag() {
+    if (!dragging) return;
+    dragging = false;
+    const rect = dock.getBoundingClientRect();
+    saveFloatPosition(rect.left, rect.top);
+    setTimeout(() => {
+      moved = false;
+    }, 0);
+  }
+
+  bubble.addEventListener("pointerdown", startDrag);
+  header.addEventListener("pointerdown", startDrag);
+  window.addEventListener("pointermove", moveDrag, { passive: false });
+  window.addEventListener("pointerup", endDrag);
+
+  bubble.addEventListener("touchstart", startDrag, { passive: false });
+  header.addEventListener("touchstart", startDrag, { passive: false });
+  window.addEventListener("touchmove", moveDrag, { passive: false });
+  window.addEventListener("touchend", endDrag);
+
+  bubble.addEventListener("click", (event) => {
+    if (moved) {
+      event.preventDefault();
+      return;
+    }
+    openFloatPanel("chat");
+  });
+}
+
 function bindEvents() {
   $("btnCreateRoom").addEventListener("click", createRoom);
   $("btnJoinRoom").addEventListener("click", joinRoom);
@@ -1651,6 +1945,24 @@ function bindEvents() {
   $("btnSaveAiConfig").addEventListener("click", () => saveAiConfigFrom(""));
   $("btnSaveAiConfigRoom").addEventListener("click", () => saveAiConfigFrom("Room"));
   $("btnFindModels").addEventListener("click", () => findModels(""));
+
+  $("btnCloseFloat").addEventListener("click", closeFloatPanel);
+  $("floatTabChat").addEventListener("click", () => switchFloatTab("chat"));
+  $("floatTabHost").addEventListener("click", () => switchFloatTab("host"));
+  $("btnSendFloatChat").addEventListener("click", sendFloatChat);
+  $("floatChatInput").addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+      sendFloatChat();
+    }
+  });
+  $("btnFloatNextStep").addEventListener("click", floatNextStep);
+  $("btnFloatStartSpeaking").addEventListener("click", () => setPhase("speaking"));
+  $("btnFloatStartDiscussing").addEventListener("click", () => setPhase("discussing"));
+  $("btnFloatStartVoting").addEventListener("click", () => setPhase("voting"));
+  $("btnFloatResolveVote").addEventListener("click", resolveVote);
+  $("btnFloatNextRound").addEventListener("click", nextRound);
+  $("btnFloatResetRoom").addEventListener("click", resetRoom);
+
   $("btnFindModelsRoom").addEventListener("click", () => findModels("Room"));
 
   document.addEventListener("visibilitychange", () => {
@@ -1677,6 +1989,7 @@ function bindEvents() {
 async function boot() {
   bindEvents();
   setupMobileKeyboardFix();
+  setupFloatDrag();
   fillPromptTextareas();
   fillAiInputs();
   switchHomePanel("create");
